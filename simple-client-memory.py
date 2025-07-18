@@ -13,7 +13,7 @@ class ConversationMemory:
     def add_user_message(self, content: str):
         self.messages.append({"role": "user", "content": content})
     
-    def add_assistant_message(self, content: str):
+    def add_assistant_message(self, content: List[Dict[str, Any]]):
         self.messages.append({"role": "assistant", "content": content})
 
     def add_tool_use(self, tool_name: str, tool_input: Dict[str, Any], tool_id: str):
@@ -62,6 +62,9 @@ async def chat_with_memory(client: Client,
     tokens_used = 0
     iterations = 0
 
+    # Track repeated tool calls across all turns
+    global_called_tools = {}  # tool_key -> count
+
     while (iterations < max_iterations and 
         tokens_used < max_tokens and 
         time.time() - start_time < max_timeout_seconds):
@@ -88,23 +91,27 @@ async def chat_with_memory(client: Client,
         assistant_content = []
         used_tools=False
         # this one tracks repeated same tool call + same arguments
-        called_tools_set=set()
-        tool_key_repeat_count = 0
+        turn_repeated_tools = False # flag for this turn
 
         # handle responses
         for block in response.content:
             if block.type == "tool_use":
-                #build hashable block for call
                 used_tools=True 
+
+                #build hashable block for call
                 tool_key = f"{block.name}:{json.dumps(block.input, sort_keys=True)}"
-                if tool_key in called_tools_set:
+
+                # track repeated calls
+                if tool_key in global_called_tools:
+                    global_called_tools[tool_key] += 1
                     print(f"Repeated tool call with same args with {tool_key}")
-                    tool_key_repeat_count += 1
-                    if tool_key_repeat_count > 2:
+
+                    if global_called_tools[tool_key] > 2:
                         print("Claude retrying same tool + args more than 2 times")
+                        turn_repeated_tools= True
                         break
                 else:
-                    called_tools_set.add(tool_key)
+                    global_called_tools[tool_key] = 1
 
                 print(f"Tool call: {block.name}")
                 print(f"Arguments: {block.input}")
@@ -131,15 +138,19 @@ async def chat_with_memory(client: Client,
                     "text": block.text
                 })
             else:
-                print("Unknown block type: {block.type}")
+                print(f"Unknown block type: {block.type}")
 
         # Add assistant response to messages
         if assistant_content:
             memory.add_assistant_message(assistant_content)
 
-        # Check if Claude is done (no tools repeated)
+        # Exit conditions
+        if turn_repeated_tools:
+            print("Exiting due to repeated tool calls")
+            break
+            
         if not used_tools:
-            print("Claude finished - no tools used")
+            print("Claude finished - no tools used this turn")
             break
         
     return memory
