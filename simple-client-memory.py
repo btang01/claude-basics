@@ -15,17 +15,6 @@ class ConversationMemory:
     
     def add_assistant_message(self, content: List[Dict[str, Any]]):
         self.messages.append({"role": "assistant", "content": content})
-
-    def add_tool_use(self, tool_name: str, tool_input: Dict[str, Any], tool_id: str):
-        self.messages.append({
-            "role": "assistant",
-            "content": [{
-                "type": "tool_use",
-                "id": tool_id,
-                "name": tool_name,
-                "input": tool_input
-            }]
-        })
     
     def add_tool_result(self, tool_id: str, result: str):
         self.messages.append({
@@ -116,20 +105,20 @@ async def chat_with_memory(client: Client,
                 print(f"Tool call: {block.name}")
                 print(f"Arguments: {block.input}")
 
-                #execute tool
-                result = await client.call_tool(block.name, block.input)
-                print(f"Tool result: {result.text}")
-
-                # Add to assistant content for this turn
-                assistant_content.append({
+                # record tool_use as assistant message
+                memory.add_assistant_message([{
                     "type": "tool_use",
                     "id": block.id,
                     "name": block.name,
                     "input": block.input
-                })
-                
+                }])
+
+                #execute tool
+                result = await client.call_tool(block.name, block.input)
+                print(f"Tool result: {result.data}")
+
                 # Add tool result to memory
-                memory.add_tool_result(block.id, result.text)
+                memory.add_tool_result(block.id, result.data)
 
             elif block.type == "text":
                 print(f"Claude: {block.text}")
@@ -158,36 +147,49 @@ async def chat_with_memory(client: Client,
 async def main():
     
     # connect to server
-    client = Client("http://localhost:5000")
+    async with Client("http://localhost:8000/mcp/") as client:
+        print("Connected! Getting tools...")
+        # list tools
+        tools = await client.list_tools()
 
-    # get prompt
-    system_prompt = load_system_prompt()
+        # get prompt
+        print("Loading system prompt...")
+        system_prompt = load_system_prompt()
 
-    # list tools
-    tools = await client.list_tools()
+    
 
-    # convert to anthropic tools
-    anthropic_tools = []
+        # convert to anthropic tools
+        anthropic_tools = []
 
-    for tool in tools:
-        anthropic_tools.append({
-            "name": tool["name"],
-            "description": tool["description"],
-            "input_schema": tool.get("inputSchema") or tool.get("input_schema")
-        })
-    #initialize memory and client
-    memory = ConversationMemory()
-    anthropic_client = AsyncAnthropic()
+        for tool in tools:
+            anthropic_tools.append({
+                "name": tool.name,
+                "description": tool.description,
+                "input_schema": tool.inputSchema
+            })
+        #initialize memory
+        memory = ConversationMemory()
+        #initialize anthropic client to talk to LLM
+        anthropic_client = AsyncAnthropic()
 
-    # Example conversation
-    user_input = input("Tell me what you want: ")
-    memory.add_user_message(user_input)
-    await chat_with_memory(client, anthropic_client, memory, anthropic_tools, system_prompt)
+        # Example conversation
+        user_input = input("Tell me what you want: ")
+        memory.add_user_message(user_input)
 
-    # Print conversation history
-    print("\n--- Conversation History ---")
-    for i, msg in enumerate(memory.get_messages()):
-        print(f"{i+1}. {msg['role']}: {msg['content']}")
+        # run conversation - put in fastmcp client, claude client, memory, anthro tools, prompt
+        final_memory = await chat_with_memory(client, 
+                                              anthropic_client, 
+                                              memory, 
+                                              anthropic_tools, 
+                                              system_prompt)
+
+        # Print conversation history
+        print("\n--- Conversation History ---")
+        for i, msg in enumerate(final_memory.get_messages()):
+            print(f"{i+1}. {msg['role']}: {msg['content']}")
+
+    # Client is automatically closed here
+    print("Disconnected from MCP server")
 
 if __name__ == "__main__":
     asyncio.run(main())

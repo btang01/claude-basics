@@ -13,3 +13,6 @@ pip install fastmcp
 pip install anthropic
 
 pip install aiohttp
+
+# every new terminal, go into the same venv
+source claude-env/bin/activate
