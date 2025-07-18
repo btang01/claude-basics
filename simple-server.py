@@ -1,14 +1,19 @@
 from fastmcp import FastMCP
+import os
+import aiohttp
 
 # create mcp server
 mcp = FastMCP("user weather server")
+
+# Load OpenWeatherMap API key
+OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY", "your_api_key_here")
 
 #create tool - get city from profile
 @mcp.tool 
 async def get_city_from_profile(profile: str) -> str:
 	"""Get user city from user profile - important, gets pulled from list_tools""" 
 	try:
-		data = {"brian": "boston", "jocelyn": "san francisco"}
+		# data = {"brian": "boston", "jocelyn": "san francisco"}
 		profile = profile.strip().lower()
 
 		if profile not in data:
@@ -23,20 +28,19 @@ async def get_city_from_profile(profile: str) -> str:
 #create tool - get weather from city
 @mcp.tool
 async def get_weather_from_city(city: str) -> str:
-	"""Get weather from city"""
-	try: 
-		data = {"boston": "sunny, 80F", "san francisco": "windy, 60F"}
+	"""Get current weather for a city using OpenWeatherMap"""
 
-		city = city.strip().lower()
+	url = f"https://api.openweathermap.org/data/2.5/weather?q={city.strip().lower()}&appid={OPENWEATHER_API_KEY}&units=imperial"
 
-		if city not in data:
-			raise ValueError(f"City '{city}' not in data")
+	# data = {"boston": "sunny, 80F", "san francisco": "windy, 60F"}
+	async with aiohttpClientSession() as session:
+		async with session.get(url) as resp:
+			data = await resp.json()
 
-		return data[city]
+	weather = data["weather"][0]["description"]
+	temp = data["main"]["temp"]
 
-	except Exception as e:
-		raise ValueError(f"Error getting weather from city: {str(e)}")
-
+	return f"{weather}, {temp}F"
 
 if __name__=="__main__":
 	mcp.run()
