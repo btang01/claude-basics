@@ -171,11 +171,10 @@ async def main():
 
     for tool in tools:
         anthropic_tools.append({
-            "name": tool.name,
-            "description": tool.description,
-            "input_schema": tool.inputSchema
+            "name": tool["name"],
+            "description": tool["description"],
+            "input_schema": tool.get("inputSchema") or tool.get("input_schema")
         })
-    
     #initialize memory and client
     memory = ConversationMemory()
     anthropic_client = AsyncAnthropic()
