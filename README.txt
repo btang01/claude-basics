@@ -11,3 +11,5 @@ pip install fastmcp
 
 # Also install anthropic if you haven't
 pip install anthropic
+
+pip install aiohttp
