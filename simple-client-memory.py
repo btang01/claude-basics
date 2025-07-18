@@ -149,14 +149,14 @@ async def main():
     # connect to server
     client = Client("http://localhost:5000")
 
+    # get prompt
+    system_prompt = load_system_prompt()
+
     # list tools
     tools = await client.list_tools()
 
     # convert to anthropic tools
     anthropic_tools = []
-
-    # get prompt
-    system_prompt = load_system_prompt()
 
     for tool in tools:
         anthropic_tools.append({
@@ -170,7 +170,8 @@ async def main():
     anthropic_client = AsyncAnthropic()
 
     # Example conversation
-    memory.add_user_message("What's the weather in Boston?")
+    user_input = input("Tell me what you want: ")
+    memory.add_user_message(user_input)
     await chat_with_memory(client, anthropic_client, memory, anthropic_tools, system_prompt)
 
     # Print conversation history
