@@ -14,6 +14,10 @@ async def main():
 		anthropic_tools = []
 
 		# future, think about lightweight tool access service to filter tool access!
+		# no need to patch all mcp servers for access, just central service
+
+		# memory thought: store convo in dynamodb or something, process with category
+		# hash category+user then think about pulling them with token limits as context into convos
 
 		for tool in tools:
 			anthropic_tools.append({
