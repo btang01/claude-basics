@@ -152,11 +152,21 @@ async def main():
         # list tools
         tools = await client.list_tools()
 
+        # check tools and properties/args
+        for tool in tools:
+            print(f"Tool: {tool.name}")
+            print(f"Description: {tool.description}")
+
+            schema = tool.inputSchema
+            properties = schema.get("properties", {})
+
+            for prop_name, prop_info in properties.items():
+                desc = prop_info.get("description", "No description")
+                print(f" - {prop_name}: {desc}")
+
         # get prompt
         print("Loading system prompt...")
         system_prompt = load_system_prompt()
-
-    
 
         # convert to anthropic tools
         anthropic_tools = []
@@ -167,6 +177,7 @@ async def main():
                 "description": tool.description,
                 "input_schema": tool.inputSchema
             })
+
         #initialize memory
         memory = ConversationMemory()
         #initialize anthropic client to talk to LLM

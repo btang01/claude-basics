@@ -42,7 +42,24 @@ async def main():
         print("\n--- Conversation History ---")
         for i, msg in enumerate(final_memory.get_messages()):
             print(f"{i+1}. {msg['role']}: {msg['content']}")
-        
+
+async def chat_with_memory(client: Client,
+                           system_prompt: str,
+                           memory: ConversationMemorySlidingWindow,
+                           anthropic_tools: List[Dict[str, Any]],
+                           anthropic_client: AsyncAnthropic):
+
+    messages = memory.get_messages()
+
+    global_called_tools = {}
+    
+    response = await anthropic_client.messages.create(
+        model="claude-3-5-sonnet-20241022",
+        system=system_prompt,
+        messages = messages,
+        tools=anthropic_tools,
+        max_tokens=1024
+    )
 
 def load_system_prompt(path: str="prompts/system_prompt2.txt") -> str:
     with open(path, "r") as f:

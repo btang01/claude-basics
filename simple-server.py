@@ -5,9 +5,8 @@ import aiohttp
 # create mcp server
 mcp = FastMCP("user weather server")
 
-
 #create tool - get city from profile
-@mcp.tool 
+@mcp.tool
 async def get_city_from_profile(profile: str) -> str:
 	"""Get user city from user profile""" 
 	try:
@@ -26,7 +25,7 @@ async def get_city_from_profile(profile: str) -> str:
 #create tool - get weather from city
 @mcp.tool
 async def get_weather_from_city(city: str) -> str:
-	"""Get current weather for a city """
+	"""Get current weather for a city"""
 
 	city = city.strip().lower()
 	data = {"boston": "sunny, 80F", "san francisco": "windy, 60F"}

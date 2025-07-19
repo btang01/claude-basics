@@ -1,3 +1,6 @@
+import json
+from typing import List, Dict, Any
+
 class ConversationMemorySlidingWindow:
     def __init__(self):
         self.messages: List[Dict[str, Any]] = []
@@ -32,7 +35,7 @@ class ConversationMemorySlidingWindow:
 
         # iterate backwards to get most relevant recent turns
         for msg in reversed(self.messages):
-            estimated += rough_token_estimate(msg)
+            estimated += self.rough_token_estimate(msg)
             if estimated > token_limit:
                 break
             # iterating backwards through list, so stick new messages to the beginning of recent list
@@ -40,6 +43,7 @@ class ConversationMemorySlidingWindow:
             total+= estimated   
         return recent 
     
+    @staticmethod
     def rough_token_estimate(msg: Dict[str, Any]) -> int:
         content = msg.get("content", "")
         if isinstance(content, list):  # structured tool_use or tool_result
