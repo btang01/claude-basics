@@ -4,6 +4,7 @@ import time
 from anthropic import AsyncAnthropic
 from fastmcp import Client
 from typing import List, Dict, Any
+from simple_weather_agent.models import ProfileInput, CityInput
 
 class ConversationMemory:
     def __init__(self):
@@ -30,6 +31,31 @@ class ConversationMemory:
         # only share copy in order to protect original - can't just append
         return self.messages.copy()
 
+tool_model_map = {
+    "get_city_from_profile": ProfileInput,
+    "get_weather_from_city": CityInput
+}
+
+def enrich_tool_schema(tool, model_class):
+    """Enrich tool.inputSchema with field descriptions from the Pydantic model."""
+    model_schema = model_class.schema()
+    for prop_name, prop_meta in tool.inputSchema["properties"].items():
+        pyd_desc = model_schema["properties"].get(prop_name, {}).get("description")
+        if pyd_desc:
+            prop_meta["description"] = pyd_desc
+    return tool
+
+async def get_enriched_tools(client: Client) -> List[Dict[str, Any]]:
+    tools = await client.list_tools()
+    enriched = []
+
+    for tool in tools:
+        model_class = tool_model_map.get(tool.name)
+        if model_class:
+            tool = enrich_tool_schema(tool, model_class)
+        enriched.append(tool)
+
+    return enriched
 
 def load_system_prompt(path: str = "prompts/system_prompt.txt") -> str:
     with open(path, "r") as f:
@@ -45,9 +71,7 @@ async def chat_with_memory(client: Client,
     # add some safeguards
     max_tokens = 100000
     max_iterations = 30
-    max_timeout_seconds = 600
 
-    start_time = time.time()
     tokens_used = 0
     iterations = 0
 
@@ -55,8 +79,7 @@ async def chat_with_memory(client: Client,
     global_called_tools = {}  # tool_key -> count
 
     while (iterations < max_iterations and 
-        tokens_used < max_tokens and 
-        time.time() - start_time < max_timeout_seconds):
+        tokens_used < max_tokens):
 
         # track safeguard progress
         iterations += 1
@@ -139,7 +162,7 @@ async def chat_with_memory(client: Client,
             break
             
         if not used_tools:
-            print("Claude finished - no tools used this turn")
+            print("Claude finished - no tools used on this turn")
             break
         
     return memory
@@ -149,34 +172,30 @@ async def main():
     # connect to server
     async with Client("http://localhost:8000/mcp/") as client:
         print("Connected! Getting tools...")
-        # list tools
-        tools = await client.list_tools()
-
-        # check tools and properties/args
-        for tool in tools:
-            print(f"Tool: {tool.name}")
-            print(f"Description: {tool.description}")
-
-            schema = tool.inputSchema
-            properties = schema.get("properties", {})
-
-            for prop_name, prop_info in properties.items():
-                desc = prop_info.get("description", "No description")
-                print(f" - {prop_name}: {desc}")
 
         # get prompt
         print("Loading system prompt...")
         system_prompt = load_system_prompt()
 
+        # list tools
+        enriched = await get_enriched_tools(client)
+
         # convert to anthropic tools
         anthropic_tools = []
 
-        for tool in tools:
+        for tool in enriched:
             anthropic_tools.append({
                 "name": tool.name,
                 "description": tool.description,
                 "input_schema": tool.inputSchema
             })
+        
+        for tool in anthropic_tools:
+            print(f"\nTool: {tool['name']}")
+            props = tool["input_schema"].get("properties", {})
+            for prop_name, prop in props.items():
+                desc = prop.get("description", "No description")
+                print(f" - {prop_name}: {desc}")
 
         #initialize memory
         memory = ConversationMemory()
