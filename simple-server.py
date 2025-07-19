@@ -5,8 +5,6 @@ import aiohttp
 # create mcp server
 mcp = FastMCP("user weather server")
 
-# Load OpenWeatherMap API key
-# OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY", "your_api_key_here")
 
 #create tool - get city from profile
 @mcp.tool 
