@@ -13,6 +13,8 @@ async def main():
 		# convert to anthropic format
 		anthropic_tools = []
 
+		# future, think about lightweight tool access service to filter tool access!
+
 		for tool in tools:
 			anthropic_tools.append({
 				"name": tool.name,
@@ -41,7 +43,9 @@ async def main():
 			if block.type == "tool_use":
 				print(f"Tool call: {block.name}")
 				print(f"Arguments: {block.input}")
+
 				result = await client.call_tool(block.name, block.input)
+
 				print(f"Tool result: {result.data}")
 
 			elif block.type == "text":

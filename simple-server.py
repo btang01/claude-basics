@@ -9,7 +9,7 @@ mcp = FastMCP("user weather server")
 #create tool - get city from profile
 @mcp.tool 
 async def get_city_from_profile(profile: str) -> str:
-	"""Get user city from user profile - important, gets pulled from list_tools""" 
+	"""Get user city from user profile""" 
 	try:
 		data = {"brian": "boston", "jocelyn": "san francisco"}
 		profile = profile.strip().lower()
