@@ -35,12 +35,12 @@ class ConversationMemorySlidingWindow:
 
         # iterate backwards to get most relevant recent turns
         for msg in reversed(self.messages):
-            estimated += self.rough_token_estimate(msg)
-            if estimated > token_limit:
+            estimated = self.rough_token_estimate(msg)
+            if total + estimated > token_limit:
                 break
             # iterating backwards through list, so stick new messages to the beginning of recent list
             recent.insert(0, msg)
-            total+= estimated   
+            total += estimated
         return recent 
     
     @staticmethod
