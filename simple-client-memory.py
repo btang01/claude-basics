@@ -280,7 +280,7 @@ async def main():
         anthropic_client = AsyncAnthropic()
 
         # Example conversation
-        user_input = input("Tell me what you want: ")
+        user_input = input("Ask me about person and I'll tell you about cities and weather related to them: ")
         memory.add_user_message(user_input)
 
         # run conversation - put in fastmcp client, claude client, memory, anthro tools, prompt
