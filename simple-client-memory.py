@@ -203,8 +203,15 @@ async def chat_with_memory(client: Client,
                 }])
 
                 #execute tool
-                result = await client.call_tool(block.name, block.input)
-                print(f"Tool result: {result.data}")
+                try:
+                    result = await client.call_tool(block.name, block.input)
+                    print(f"Tool result: {result.data}")
+                    memory.add_tool_result(block.id, result.data)
+
+                except Exception as e:
+                    print(f"Tool error: {e}")
+                    memory.add_tool_result(block.id, f"error: {e}")
+                    continue
 
                 # Add tool result to memory
                 memory.add_tool_result(block.id, result.data)
