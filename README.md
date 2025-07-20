@@ -1,235 +1,294 @@
-# Claude Basics - MCP Weather Assistant
+# Claude Basics - MCP Implementation Guide
 
-A Python project demonstrating the Model Context Protocol (MCP) with Claude AI integration, featuring weather tools, conversation memory management, and sliding window memory optimization.
+A comprehensive Python project demonstrating Model Context Protocol (MCP) integration with Claude AI, featuring practical examples of memory management, tool usage, and conversation handling.
 
-## Project Overview
+## Quick Start
 
-This project implements a complete MCP (Model Context Protocol) system with:
-- **MCP Server**: Provides weather and user profile tools
-- **Basic Client**: Simple one-turn interaction with Claude
-- **Advanced Client**: Multi-turn conversations with memory management
-- **Medium Client**: Intermediate client with sliding window memory integration
-- **Sliding Window Memory**: Optimized memory management for long conversations
-- **Weather Agent**: Modular weather tools and models
-- **Stock Agent**: Archived example of a stock market information agent
+```bash
+# Setup
+python3 -m venv claude-env
+source claude-env/bin/activate  # macOS/Linux
+pip install fastmcp anthropic aiohttp
+export ANTHROPIC_API_KEY="your_key_here"
 
-## Features
+# Run server + client
+python simple-server.py        # Terminal 1
+python simple-client.py        # Terminal 2
+```
 
-- Real-time weather information retrieval
-- User profile-based location lookup
-- Conversation memory and context management
-- Sliding window memory optimization for token efficiency
-- Tool call tracking and repetition prevention
-- Multi-turn dialogue capabilities
-- Safeguards against infinite loops and excessive API usage
-- Modular architecture with reusable components
+## Project Components
 
-## Project Structure
+| Component | Purpose | Key Features |
+|-----------|---------|--------------|
+| `simple-server.py` | Basic MCP server | Weather tools, profile lookup |
+| `simple-client.py` | Single-turn client | Basic tool usage |
+| `simple-client-memory.py` | Multi-turn client | Full conversation memory |
+| `medium-client.py` | Optimized client | Sliding window memory |
+| `ConversationMemorySlidingWindow` | Memory class | Token-aware windowing |
+
+## Core Patterns
+
+### 1. MCP Server Setup
+```python
+from fastmcp import FastMCP
+
+mcp = FastMCP("server_name")
+
+@mcp.tool
+async def my_tool(param: str) -> str:
+    """Tool description for Claude"""
+    return f"Result: {param}"
+
+if __name__ == "__main__":
+    mcp.run(transport="http", host="localhost", port=8000)
+```
+
+### 2. MCP Client Connection
+```python
+from fastmcp import Client
+from anthropic import AsyncAnthropic
+
+async with Client("http://localhost:8000/mcp/") as client:
+    tools = await client.list_tools()
+    
+    # Convert to Anthropic format
+    anthropic_tools = [{
+        "name": tool.name,
+        "description": tool.description,
+        "input_schema": tool.inputSchema
+    } for tool in tools]
+```
+
+### 3. Claude Integration
+```python
+anthropic_client = AsyncAnthropic()
+
+response = await anthropic_client.messages.create(
+    model="claude-3-5-sonnet-20241022",
+    system=system_prompt,
+    messages=messages,
+    tools=anthropic_tools,
+    max_tokens=1024
+)
+```
+
+### 4. Tool Call Handling
+```python
+for block in response.content:
+    if block.type == "tool_use":
+        result = await client.call_tool(block.name, block.input)
+        # Add tool result to conversation
+    elif block.type == "text":
+        print(f"Claude: {block.text}")
+```
+
+## Memory Management
+
+### Basic Memory (All Messages)
+```python
+class ConversationMemory:
+    def __init__(self):
+        self.messages = []
+    
+    def add_user_message(self, content: str):
+        self.messages.append({"role": "user", "content": content})
+    
+    def get_messages(self):
+        return self.messages.copy()
+```
+
+### Sliding Window Memory (Optimized)
+```python
+from classes.ConversationMemorySlidingWindow import ConversationMemorySlidingWindow
+
+memory = ConversationMemorySlidingWindow()
+
+# Get last 20 messages
+recent = memory.get_recent_messages(window_size=20)
+
+# Get messages within token limit
+recent = memory.get_recent_messages_token_limit(token_limit=10000)
+```
+
+## Conversation Loop Pattern
+
+```python
+async def chat_with_memory(client, anthropic_client, memory, tools, system_prompt):
+    max_iterations = 30
+    iterations = 0
+    
+    while iterations < max_iterations:
+        iterations += 1
+        messages = memory.get_messages()  # or get_recent_messages()
+        
+        response = await anthropic_client.messages.create(
+            model="claude-3-5-sonnet-20241022",
+            system=system_prompt,
+            messages=messages,
+            tools=tools,
+            max_tokens=1024
+        )
+        
+        used_tools = False
+        for block in response.content:
+            if block.type == "tool_use":
+                used_tools = True
+                # Execute tool and add results to memory
+                result = await client.call_tool(block.name, block.input)
+                memory.add_tool_result(block.id, result.data)
+            elif block.type == "text":
+                memory.add_assistant_message([{"type": "text", "text": block.text}])
+        
+        if not used_tools:
+            break  # Conversation complete
+    
+    return memory
+```
+
+## Safety Mechanisms
+
+### Tool Call Tracking
+```python
+global_called_tools = {}  # tool_key -> count
+
+tool_key = f"{block.name}:{json.dumps(block.input, sort_keys=True)}"
+if tool_key in global_called_tools:
+    global_called_tools[tool_key] += 1
+    if global_called_tools[tool_key] > 2:
+        break  # Prevent infinite loops
+```
+
+### Resource Limits
+```python
+# Conversation safeguards
+max_tokens = 100000
+max_iterations = 30
+max_timeout_seconds = 600
+start_time = time.time()
+
+# Check limits in loop
+if (iterations >= max_iterations or 
+    tokens_used >= max_tokens or 
+    time.time() - start_time >= max_timeout_seconds):
+    break
+```
+
+## System Prompt Template
+
+```python
+def load_system_prompt(path: str = "prompts/system_prompt.txt") -> str:
+    with open(path, "r") as f:
+        return f.read().strip()
+
+# Example system prompt structure:
+"""
+You are a helpful AI assistant with access to tools.
+
+## Your capabilities:
+- Tool 1: Description
+- Tool 2: Description
+
+## Guidelines:
+1. Always use available tools when appropriate
+2. Be concise and clear
+3. Handle errors gracefully
+4. Limit repetitive tool calls
+
+## Response style:
+- Friendly and conversational
+- Format information clearly
+- Provide context when helpful
+"""
+```
+
+## File Structure
 
 ```
 claude-basics/
-├── simple-server.py          # MCP server with weather tools
-├── medium-server.py          # Enhanced MCP server
-├── simple-client.py          # Basic MCP client (single interaction)
-├── simple-client-memory.py   # Advanced client with conversation memory
-├── medium-client.py          # Client with sliding window memory integration
-├── debug_tool.py            # Debugging utilities
+├── simple-server.py              # Basic MCP server
+├── medium-server.py              # Enhanced server
+├── simple-client.py              # Single-turn client
+├── simple-client-memory.py       # Full memory client
+├── medium-client.py              # Sliding window client
 ├── classes/
-│   ├── __init__.py
-│   └── ConversationMemorySlidingWindow.py  # Sliding window memory class
+│   └── ConversationMemorySlidingWindow.py
 ├── simple_weather_agent/
-│   ├── __init__.py
-│   ├── models.py            # Weather data models
-│   └── tools.py             # Weather tool implementations
+│   ├── models.py                 # Data structures
+│   └── tools.py                  # Tool implementations
 ├── prompts/
-│   ├── system_prompt.txt    # System prompt for Claude
-│   └── system_prompt2.txt   # Alternative system prompt
-├── example_messages/
-│   └── message.py           # Example message format structures
-├── files/
-│   └── ceo.txt             # Sample data file
-├── archive/
-│   └── practice1_stock_agent.py  # Stock market agent example
-└── claude-env/              # Python virtual environment
+│   ├── system_prompt.txt
+│   └── system_prompt2.txt
+└── example_messages/
+    └── message.py                # Message format examples
 ```
 
-## Setup
+## Common Patterns
 
-### 1. Create Virtual Environment
-
-```bash
-python3 -m venv claude-env
-```
-
-### 2. Activate Environment
-
-**macOS/Linux:**
-```bash
-source claude-env/bin/activate
-```
-
-**Windows:**
-```bash
-claude-env\Scripts\activate
-```
-
-### 3. Install Dependencies
-
-```bash
-pip install fastmcp anthropic aiohttp
-```
-
-### 4. Set Environment Variables
-
-Set your Anthropic API key:
-```bash
-export ANTHROPIC_API_KEY="your_api_key_here"
-```
-
-## Usage
-
-### Running the MCP Servers
-
-Start the basic weather server on localhost:8000:
-```bash
-python simple-server.py
-```
-
-Or start the enhanced server:
-```bash
-python medium-server.py
-```
-
-The servers provide tools for:
-- `get_city_from_profile(profile)`: Get user's city from their profile
-- `get_weather_from_city(city)`: Get weather information for a city
-
-### Client Options
-
-#### Basic Client (Single-turn)
-For simple one-time interactions:
-```bash
-python simple-client.py
-```
-
-#### Advanced Client (Full Memory)
-For multi-turn conversations with complete memory:
-```bash
-python simple-client-memory.py
-```
-
-#### Medium Client (Sliding Window Memory)
-For optimized multi-turn conversations with sliding window memory:
-```bash
-python medium-client.py
-```
-
-## Memory Management Systems
-
-### Basic Memory (`simple-client-memory.py`)
-- **Complete History**: Stores all conversation messages
-- **Tool Call Tracking**: Prevents repetitive tool calls
-- **Safety Limits**: Token, iteration, and time constraints
-
-### Sliding Window Memory (`ConversationMemorySlidingWindow`)
-- **Window by Count**: Keep last N messages (default: 20)
-- **Window by Tokens**: Keep messages within token limit (default: 10,000)
-- **Token Estimation**: Rough heuristic for message size calculation
-- **Memory Efficiency**: Automatically manages context size for long conversations
-
-#### Sliding Window Methods:
+### Error Handling
 ```python
-# Get recent messages by count
-memory.get_recent_messages(window_size=20)
-
-# Get recent messages by token limit
-memory.get_recent_messages_token_limit(token_limit=10000)
-
-# Get all messages (traditional approach)
-memory.get_messages()
+try:
+    result = await client.call_tool(tool_name, tool_input)
+    return result.data
+except Exception as e:
+    return f"Error: {str(e)}"
 ```
 
-## Available Tools
+### Message Format
+```python
+# User message
+{"role": "user", "content": "Hello"}
 
-### Weather Tools
+# Assistant with tool use
+{"role": "assistant", "content": [
+    {"type": "tool_use", "id": "123", "name": "tool_name", "input": {...}}
+]}
 
-1. **get_city_from_profile**
-   - Input: User profile name (string)
-   - Output: City associated with the profile
-   - Supported profiles: "brian" (Boston), "jocelyn" (San Francisco)
-
-2. **get_weather_from_city**
-   - Input: City name (string)
-   - Output: Current weather conditions
-   - Supported cities: Boston, San Francisco
-
-## Modular Components
-
-### Weather Agent (`simple_weather_agent/`)
-- **models.py**: Data structures for weather information
-- **tools.py**: Weather tool implementations
-- **Reusable**: Can be imported into different client implementations
-
-### Memory Classes (`classes/`)
-- **ConversationMemorySlidingWindow**: Optimized memory management
-- **Token-aware**: Estimates message sizes for efficient windowing
-- **Flexible**: Supports both count-based and token-based windowing
-
-## System Prompts
-
-The AI assistant can be configured with different prompts:
-- **system_prompt.txt**: Basic weather assistant configuration
-- **system_prompt2.txt**: Enhanced prompt for advanced interactions
-
-Key behaviors:
-- Use available tools for weather and user information
-- Determine user location from profiles when needed
-- Provide clear, formatted responses
-- Handle errors transparently
-- Limit repetitive tool usage
-
-## Example Interactions
-
-```
-User: "What's the weather like?"
-Assistant: [Uses get_city_from_profile if user is known, then get_weather_from_city]
-
-User: "What's the weather in Boston?"
-Assistant: [Directly calls get_weather_from_city with "Boston"]
-
-User: "Tell me more about the weather patterns"
-Assistant: [Continues conversation using sliding window memory for context]
+# Tool result
+{"role": "user", "content": [
+    {"type": "tool_result", "tool_use_id": "123", "content": "result"}
+]}
 ```
 
-## Development Notes
+### Token Estimation
+```python
+def rough_token_estimate(msg):
+    content = msg.get("content", "")
+    if isinstance(content, list):
+        content_str = json.dumps(content)
+    else:
+        content_str = str(content)
+    return len(content_str) // 4  # ~4 chars per token
+```
 
-- **FastMCP**: Server implementation framework
-- **Claude 3.5 Sonnet**: Default language model
-- **Async/await**: Throughout for better performance
-- **Error Handling**: Comprehensive input validation and error management
-- **Mock Data**: Weather information (easily replaceable with real APIs)
-- **Modular Design**: Reusable components and clear separation of concerns
-- **Memory Optimization**: Sliding window approach for long conversations
+## Testing Commands
 
-## Safety Features
+```bash
+# Test basic functionality
+python simple-client.py
 
-- **Token Limits**: Prevent excessive API usage
-- **Iteration Limits**: Avoid infinite conversation loops
-- **Timeout Protection**: Maximum conversation duration
-- **Tool Call Tracking**: Prevent repetitive identical calls
-- **Memory Management**: Automatic context size optimization
+# Test memory management
+python simple-client-memory.py
 
-## Archived Components
+# Test sliding window
+python medium-client.py
 
-- `practice1_stock_agent.py`: Example implementation of a stock market information agent with tool usage patterns
+# Debug tools
+python debug_tool.py
+```
 
-## Requirements
+## Key Dependencies
 
-- Python 3.7+
-- fastmcp
-- anthropic
-- aiohttp
+```bash
+pip install fastmcp      # MCP framework
+pip install anthropic    # Claude API
+pip install aiohttp      # Async HTTP
+```
 
-## License
+## Environment Variables
 
-This project is for educational and demonstration purposes.
+```bash
+export ANTHROPIC_API_KEY="your_anthropic_api_key"
+# Optional: export OPENWEATHER_API_KEY="your_weather_key"
+```
+
+This project demonstrates practical MCP implementation patterns, memory optimization techniques, and robust conversation handling for AI assistant applications.
