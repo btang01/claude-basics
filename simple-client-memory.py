@@ -53,7 +53,7 @@ class EntityMemory:
             context_list.append(f"{key}: {value}")
 
         # new line with each key/value pair, but label in brackets to match context_list list type
-        return "/n".join(["Known entities:"] + context_list)
+        return "\n".join(["Known entities:"] + context_list)
     
     # lets us inspect entity with memory=new EntityMemory(), print memory instead of a memory address blob
     def __repr__(self):
@@ -141,7 +141,7 @@ async def chat_with_memory(client: Client,
                 #build hashable block for call
                 tool_key = f"{block.name}:{json.dumps(block.input, sort_keys=True)}"
 
-                # track repeated calls
+                # track repeated calls with same tool key (tool name + tool args)
                 if tool_key in global_called_tools:
                     global_called_tools[tool_key] += 1
                     print(f"Repeated tool call with same args with {tool_key}")
