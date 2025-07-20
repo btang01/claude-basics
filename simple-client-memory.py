@@ -133,6 +133,7 @@ async def chat_with_memory(client: Client,
     # Track repeated tool calls across all turns
     global_called_tools = {}  # tool_key -> count
 
+    # outside loop, bounded by limits
     while (iterations < max_iterations and 
         tokens_used < max_tokens):
 
