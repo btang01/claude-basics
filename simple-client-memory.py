@@ -30,6 +30,34 @@ class ConversationMemory:
     def get_messages(self) -> List[Dict[str, Any]]:
         # only share copy in order to protect original - can't just append
         return self.messages.copy()
+    
+class EntityMemory:
+    def __init__(self):
+        self.entities: Dict[str, Any] = {}
+        
+    def upsert(self, key: str, value: Any):
+        """update or insert an entity"""
+        self.entities[key] = value
+    
+    def get(self, key: str):
+        """return values using key"""
+        return self.entities.get(key)
+
+    def as_prompt_context(self) -> str:
+        """serialize and put in format for LLM"""
+        if not self.entities:
+            return ""
+        
+        context_list = []
+        for key, value in self.entities.items():
+            context_list.append(f"{key}: {value}")
+
+        # new line with each key/value pair, but label in brackets to match context_list list type
+        return "/n".join(["Known entities:"] + context_list)
+    
+    # lets us inspect entity with memory=new EntityMemory(), print memory instead of a memory address blob
+    def __repr__(self):
+        return f"Entity Memory({self.entities})"
 
 tool_model_map = {
     "get_city_from_profile": ProfileInput,
