@@ -38,7 +38,7 @@ tool_model_map = {
 
 def enrich_tool_schema(tool, model_class):
     """Enrich tool.inputSchema with field descriptions from the Pydantic model."""
-    model_schema = model_class.schema()
+    model_schema = model_class.model_json_schema()
     for prop_name, prop_meta in tool.inputSchema["properties"].items():
         pyd_desc = model_schema["properties"].get(prop_name, {}).get("description")
         if pyd_desc:
