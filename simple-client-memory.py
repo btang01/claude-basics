@@ -213,9 +213,6 @@ async def chat_with_memory(client: Client,
                     memory.add_tool_result(block.id, f"error: {e}")
                     continue
 
-                # Add tool result to memory
-                memory.add_tool_result(block.id, result.data)
-
                 # update entity memory if necessary - returns function
                 tool_updater = TOOL_ENTITY_UPDATES.get(block.name)
                 if tool_updater:
