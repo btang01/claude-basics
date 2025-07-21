@@ -19,6 +19,8 @@
     },
     
     # Tool result
+    # mcp i can get to content with content.data
+    # without mcp, access with resultadata = block["content"][0]["content"]
     {
         "role": "user",
         "content": [
@@ -30,10 +32,13 @@
         ]
     },
     
-    # Assistant text response
+    # Assistant text response - handle with if block.type == "text"
     {
         "role": "assistant",
-        "content": "The weather in Boston is currently 72°F and sunny!"
+        "content": [{
+            "type": "text",
+            "text": "The weather in Boston is currently 72°F and sunny!"
+        }]
     },
     
     # Another user message
