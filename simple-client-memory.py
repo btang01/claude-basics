@@ -124,18 +124,11 @@ async def chat_with_memory(client: Client,
                            max_iterations: int = 25):
     
     # add some safeguards
-    max_tokens = 100000
     max_iterations = 30
-
-    tokens_used = 0
     iterations = 0
 
-    # Track repeated tool calls across all turns
-    global_called_tools = {}  # tool_key -> count
-
     # outside loop, bounded by limits
-    while (iterations < max_iterations and 
-        tokens_used < max_tokens):
+    while iterations < max_iterations:
 
         # track safeguard progress
         iterations += 1
@@ -149,6 +142,9 @@ async def chat_with_memory(client: Client,
                 "content": entity_memory_context
             })
 
+        # track assistant messages
+        assistant_content = []
+
         # call Claude with information
         response = await anthropic_client.messages.create(
             model="claude-3-5-sonnet-20241022",
@@ -158,15 +154,11 @@ async def chat_with_memory(client: Client,
             max_tokens=1024 # 800 word response
         )
 
-        # Track token usage
-        if hasattr(response, 'usage') and hasattr(response.usage, 'output_tokens'):
-            tokens_used += response.usage.output_tokens
-
-        # track if Claude used tools response
-        assistant_content = []
-        used_tools=False
-        # this one tracks repeated same tool call + same arguments
-        turn_repeated_tools = False # flag for this turn
+        print(f"Stop reason: {response.stop_reason}")
+        memory.messages.append({
+            "role": "metadata",
+            "content": [{"stop_reason": response.stop_reason}]
+        })
 
         # handle responses
         for block in response.content:
@@ -174,22 +166,6 @@ async def chat_with_memory(client: Client,
             entity_memory_context = entity_memory.as_prompt_context()
             print(f"This is what's in my entity memory right now: {entity_memory_context} !!!")
             if block.type == "tool_use":
-                used_tools=True 
-
-                #build hashable block for call
-                tool_key = f"{block.name}:{json.dumps(block.input, sort_keys=True)}"
-
-                # track repeated calls with same tool key (tool name + tool args)
-                if tool_key in global_called_tools:
-                    global_called_tools[tool_key] += 1
-                    print(f"Repeated tool call with same args with {tool_key}")
-
-                    if global_called_tools[tool_key] > 2:
-                        print("Claude retrying same tool + args more than 2 times")
-                        turn_repeated_tools= True
-                        break
-                else:
-                    global_called_tools[tool_key] = 1
 
                 print(f"Tool call: {block.name}")
                 print(f"Arguments: {block.input}")
@@ -228,7 +204,7 @@ async def chat_with_memory(client: Client,
                 print(f"Claude: {block.text}")
                 assistant_content.append({
                     "type": "text",
-                    "text": block.text
+                    "text": block.text,
                 })
             else:
                 print(f"Unknown block type: {block.type}")
@@ -238,12 +214,11 @@ async def chat_with_memory(client: Client,
             memory.add_assistant_message(assistant_content)
 
         # Exit conditions
-        if turn_repeated_tools:
-            print("Exiting due to repeated tool calls")
-            break
-            
-        if not used_tools:
-            print("Claude finished - no tools used on this turn")
+
+        user_input = input(f"\nYou: ")
+        memory.add_user_message(user_input)
+        if user_input.strip().lower()=="end conversation":
+            print("User ended conversation")
             break
         
     return memory
