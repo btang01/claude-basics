@@ -9,8 +9,9 @@ from pydantic import BaseModel
 
 class ConversationMemory:
     def __init__(self):
-        # this is our storage
+        # this is our conversation storage
         self.messages: List[Dict[str, Any]] = []
+        self.metadata: List[Dict[str, Any]] = []
 
     def add_user_message(self, content: str):
         self.messages.append({"role": "user", "content": content})
@@ -28,6 +29,9 @@ class ConversationMemory:
             }]
         })
 
+    def add_metadata(self, data: Dict[str, Any]):
+        self.metadata.append(data)
+
     def get_messages(self) -> List[Dict[str, Any]]:
         # only share copy in order to protect original - can't just append
         return self.messages.copy()
@@ -35,27 +39,55 @@ class ConversationMemory:
 
 class EntityMemory:
     def __init__(self):
-        self.entities: Dict[str, Any] = {}
-        
-    def upsert(self, key: str, value: Any):
-        """update or insert an entity"""
-        self.entities[key] = value
-    
-    def get(self, key: str):
-        """return values using key"""
-        return self.entities.get(key)
+        # primary key is id 'brian1'
+        self.entities: Dict[str, Dict[str, Any]] = {}
 
-    def as_prompt_context(self) -> str:
-        """serialize and put in format for LLM"""
-        if not self.entities:
-            return ""
+    def hydrate_from_data(self, data: List[Dict[str, Any]]):
+        """Load entities from a long-term JSON dataset."""
+        for record in data:
+            self.entities[record["id"]] = record
         
-        context_list = []
-        for key, value in self.entities.items():
-            context_list.append(f"{key}: {value}")
+    def upsert(self, entity_id: str, key: str, value: Any):
+        """Add or update an attribute for an entity."""
+        if entity_id not in self.entities:
+            self.entities[entity_id] = {"id": entity_id}
+        self.entities[entity_id][key] = value 
 
-        # new line with each key/value pair, but label in brackets to match context_list list type
-        return "\n".join(["Known entities:"] + context_list)
+    def add_note(self, entity_id: str, note: str):
+        """Append a note to the entity's notes list."""
+        if entity_id not in self.entities:
+            self.entities[entity_id] = {"id": entity_id, "notes": [note]}
+        else:
+            self.entities[entity_id].setdefault("notes", []).append(note)
+
+    def get(self, entity_id: str) -> Dict[str, Any]:
+        """Retrieve a single entity by ID."""
+        return self.entities.get(entity_id)
+
+    def as_prompt_context(self, filter_by_name: str = None) -> str:
+        """
+        Generate a Claude-friendly string.
+        Optionally filter by first_name to only show relevant entities.
+        """
+        lines = ["Known entities (use id or notes for disambiguation):"]
+        for entity in self.entities.values():
+            if filter_by_name and entity.get("first_name", "").lower() != filter_by_name.lower():
+                continue
+
+            parts = []
+            for key in ["id", "first_name", "last_name", "department", "job_title"]:
+                if entity.get(key):
+                    parts.append(f"{key}: {entity[key]}")
+
+            if entity.get("locations"):
+                city = entity["locations"][0].get("city")
+                if city:
+                    parts.append(f"city: {city}")
+
+            if entity.get("notes"):
+                parts.append(f"notes: {', '.join(entity['notes'])}")
+            lines.append(", ".join(parts))
+        return "\n".join(lines)
     
     # lets us inspect entity with memory=new EntityMemory(), print memory instead of a memory address blob
     def __repr__(self):
@@ -71,12 +103,13 @@ class ToolUseBlock(BaseModel):
 class ToolResult(BaseModel):
     data: str
 
-
 def update_from_profile_input(block: ToolUseBlock, result: ToolResult, entity_memory: EntityMemory):
-    profile = block.input.get("profile")
+    profile = block.input.get("name")
     if profile:
-        entity_memory.upsert("profile", profile)
-        entity_memory.upsert("city", result.data.strip())
+        # Use a generated ID (e.g., lowercase name + 1)
+        entity_id = f"{profile_name.lower()}1"
+        entity_memory.upsert(entity_id, "first_name", profile_name)
+        entity_memory.upsert(entity_id, "city", result.data.strip())
         print(f"Updated entity memory: {entity_memory.as_prompt_context()}")
 
 TOOL_ENTITY_UPDATES = {
@@ -147,18 +180,16 @@ async def chat_with_memory(client: Client,
 
         # call Claude with information
         response = await anthropic_client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model="claude-sonnet-4-20250514",
             system=system_prompt,
             messages=messages,
             tools=anthropic_tools,
             max_tokens=1024 # 800 word response
         )
 
+        # remember stop reasons, not used right now though
         print(f"Stop reason: {response.stop_reason}")
-        memory.messages.append({
-            "role": "metadata",
-            "content": [{"stop_reason": response.stop_reason}]
-        })
+        memory.add_metadata({"stop_reason: {response.stop_reason}"})
 
         # handle responses
         for block in response.content:
@@ -215,11 +246,15 @@ async def chat_with_memory(client: Client,
 
         # Exit conditions
 
-        user_input = input(f"\nYou: ")
-        memory.add_user_message(user_input)
-        if user_input.strip().lower()=="end conversation":
-            print("User ended conversation")
-            break
+        if response.stop_reason == "tool_use":
+            continue
+
+        elif response.stop_reason == "end_turn":
+            user_input = input(f"\nYou: ")
+            memory.add_user_message(user_input)
+            if user_input.strip().lower()=="end conversation":
+                print("User ended conversation")
+                break
         
     return memory
 
