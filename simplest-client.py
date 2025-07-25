@@ -83,7 +83,10 @@ async def run_agent():
                     "content": [{
                         "type": "tool_result",
                         "tool_use_id": block.id,
-                        "content": result
+                        "content": [{
+                            "type": "text",
+                            "text": result
+                        }]
                     }]
                 })
 
@@ -108,12 +111,6 @@ tool_runners = {
     "get_city_from_name": lambda inp: get_city_from_name(**inp),
     "get_weather_from_city": lambda inp: get_weather_from_city(**inp)
 }
-
-def run_get_city(inp):
-    return get_city_from_name(**inp)
-
-def run_get_weather(inp):
-    return get_weather_from_city(**inp)
 
 def get_city_from_name(name: str) -> str:
     """return the city that is associated with the provided name"""
