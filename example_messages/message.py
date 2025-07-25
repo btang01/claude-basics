@@ -14,7 +14,7 @@
                 "id": "toolu_123abc",
                 "name": "get_weather",
                 "input": {"location": "Boston"}
-            }
+            } 
         ]
     },
     
