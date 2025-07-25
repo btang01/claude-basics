@@ -1,6 +1,6 @@
-# Claude Basics - MCP Cheat Sheet & Implementation Guide
+# Claude Basics - MCP Implementation Guide
 
-Quick reference guide for Claude AI + MCP integration with real-world patterns for memory management, tool usage, and multi-person entity tracking.
+Comprehensive guide for Claude AI + MCP integration with real-world patterns for memory management, tool usage, and multi-person entity tracking.
 
 ## Quick Reference
 
