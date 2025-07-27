@@ -94,7 +94,11 @@ async def run_agent():
                     }]
                 })
 
-                result = tool_runners[block.name](tool_input)
+                try:
+                    result = tool_runners[block.name](tool_input)
+                except Exception as e:
+                    print(f"Error getting result for '{block.name}': {str(e)}")
+                    result = f"An error occurred: {str(e)}"
 
                 messages.append({
                         "role": "user",
