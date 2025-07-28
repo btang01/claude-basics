@@ -198,6 +198,29 @@ tool_runners = {
     "get_latest_stock_news": lambda inp: get_latest_stock_news(**inp)
 }
 
+async def call_with_retries(client, **kwargs):
+    max_retries = 5
+    base_delay = 1
+
+    for attempt in range(max_retries):
+        try:
+            return await client.messages.create(**kwargs)
+        except Exception as e:
+            wait = base_delay * (2**attempt) + random.random()
+            print(f"[Claude API] Attempt {attempt+1} failed: {e}. Retrying in {wait:.1f}s...")
+            await asyncio.sleep(wait)
+    raise RuntimeError("Claude API call failed after max retries")
+
+async def run_tool_with_retries(tool_func, tool_input, max_retries=3, base_delay=0.5):
+    for attempt in range(max_retries):
+        try:
+            return tool_func(**tool_input)
+        except Exception as e:
+            wait = base_delay * (2 ** attempt) + random.random()
+            print(f"[Tool {tool_func.__name__}] Attempt {attempt+1} failed: {e}. Retrying in {wait:.1f}s...")
+            await asyncio.sleep(wait)
+    return "error"
+
 def get_stock_price_yesterday(ticker_name: str):
     data = [{"ticker_name": "amzn", "stock_price": 100.12}, {"ticker_name": "aapl", "stock_price": 203.33}]  
 
