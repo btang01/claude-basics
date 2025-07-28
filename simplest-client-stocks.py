@@ -45,7 +45,22 @@ class ConversationMemory():
     # get messages
     def get_messages(self) -> List[Dict[str, Any]]:
         return self.messages.copy()
+    
+class EntityMemory():
+    def __init__(self):
+        self.entities: Dict[str, Dict[str, Any]] = {}
 
+    # update
+    def update(self, key: str, value: str):
+        self.entities[key] = value
+
+    # get
+    def get(self, key: str):
+        return self.entities.get(key)
+
+    # convert to text
+    def to_text(self):
+        return "\n".join([f"{k}: {v}" for k, v in self.entities.items()])
 
 async def run_agent():
 
@@ -96,12 +111,13 @@ async def run_agent():
 
     # prep messages, prompt, LLM call
     convo_memory = ConversationMemory()
+    entity_memory = EntityMemory()
 
     input_prompt = input("Enter a stock ticker and ask about prices and news: ")
     convo_memory.add_text("user", input_prompt)
     messages = convo_memory.get_messages()
 
-    system_prompt = load_system_prompt()
+    base_system_prompt = load_system_prompt()
 
     anthropic_client = AsyncAnthropic()
 
@@ -117,10 +133,23 @@ async def run_agent():
         messages = convo_memory.get_messages()
         print(f"What's in conversation memory: {messages}")
 
+        full_system_prompt = f"""
+        {base_system_prompt}
+
+        If you learn any persistent facts about the stock (like name, last price, context),
+        always output them at the end of your message in this exact format:
+        ENTITY:key=value
+
+        Known entities about the stocks: 
+        {entity_memory.to_text()}
+        """
+
+        print(f"what's in entity memory: {entity_memory.to_text()}")
+
         response = await anthropic_client.messages.create(
             model="claude-sonnet-4-20250514",
             messages=messages,
-            system=system_prompt,
+            system=full_system_prompt,
             tools=tools,
             max_tokens=1024
         )
@@ -149,6 +178,16 @@ async def run_agent():
             elif block.type == "text":
                 print(f"Claude: {block.text}")
                 convo_memory.add_text("assistant", block.text)
+
+                # stash entities if found
+                for line in block.text.splitlines():
+                    if line.startswith("ENTITY:"):
+                        try:
+                            key, value = line.replace("ENTITY:", "").split("=", 1)
+                            entity_memory.update(key.strip(), value.strip())
+                            print(f"Stored entity: {key.strip()} = {value.strip()}")
+                        except ValueError:
+                            continue
 
         if response.stop_reason == "end_turn" or not used_tool:
             break
